@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <iostream>
+#include <thread>
 #include <QCommonStyle>
 #include <QDesktopWidget>
 #include <QDir>
@@ -22,42 +24,78 @@ main_window::main_window(QWidget *parent) :
     QCommonStyle style;
     ui->actionFind_copy->setIcon(style.standardIcon(QCommonStyle::SP_DialogOpenButton));
     connect(ui->actionFind_copy, &QAction::triggered, this, &main_window::select_directory);
-
 }
 
 void main_window::select_directory()
 {
     QString dir = QFileDialog::getExistingDirectory(this, "Select Directory for find copy",
                                                     QString(), QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
-
+    qDeleteAll(equals_classes.begin(), equals_classes.end());
+    equals_classes.clear();
     scan_directory(dir);
 }
 
 void main_window::scan_directory(QString const& dir)
 {
+    qRegisterMetaType<QVector<int>>("QVector<int>");
     ui->treeWidget->clear();
     setWindowTitle(QString("Directory Content - %1").arg(dir));
-    split_by_size(equals_classes, QDirIterator(dir, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks));
-    for (auto & i : equals_classes) {
-        auto split = std::async(std::launch::async, &main_window::split_by_hash, this, std::ref(i));
-        split.get();
+    split_by_size(equals_classes, QDirIterator(dir, QDir::NoDotAndDotDot | QDir::AllEntries, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks));
+    auto duplicates = equals_classes.operator[](0)->get_files();
+    for (size_t i = 1; i < 100000; ++i) {
+        if (equals_classes.find(i)!= equals_classes.end()) {
+            auto get = equals_classes.operator[](i)->get_files();
+            for (auto j : get) {
+                duplicates.push_back(j);
+            }
+        }
     }
-
+    std::vector<std::future<std::vector<QFile*> &>> split;
+    for (auto & i : equals_classes) {
+        std::vector<QPair<xxh::hash64_t, QFile*>> &get_files = i->get_files();
+        if (get_files.size() <= 1) {
+            continue;
+        }
+        split.emplace_back(std::async(std::launch::async, &main_window::split_by_hash, this, std::ref(get_files)));
+    }
+    int spliter = 0;
+    for (auto & i : split) {
+        std::vector<QFile *> duplicates = i.get();
+        for (size_t j = 0; j < duplicates.size(); ++j) {
+            QFileInfo file_info(*duplicates[j]);
+            QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
+            std::cout << file_info.fileName().toStdString() << std::endl;
+            item->setText(0, file_info.fileName());
+            item->setText(1, QString::number(duplicates.size()));
+            item->setText(2, QString::number(file_info.size()));
+            ui->treeWidget->addTopLevelItem(item);
+            //delete item;
+        }
+        if (spliter == 15) {
+            QCoreApplication::processEvents();
+            spliter = 0;
+        }
+        ++spliter;
+    }
+    //todo это должно происходить не здесь, указатели на дубликаты хочу оставить, хотя все остальное неплохо бы выкинуть
+    qDeleteAll(equals_classes.begin(), equals_classes.end());
+    equals_classes.clear();
 }
 
-void main_window::split_by_size(QMap<qint64, equals_class> &equals_classes, QDirIterator && dir_it)
+void main_window::split_by_size(QMap<qint64, equals_class*> &equals_classes, QDirIterator && dir_it)
 {
     while(true) {
         QFileInfo file_info = dir_it.fileInfo();
         if (!file_info.isDir()) {
-            auto map_it = equals_classes.find(file_info.size());
+            qint64 file_size = file_info.size();
+            auto map_it = equals_classes.find(file_size);
             if (map_it == equals_classes.end()) {
-                equals_classes.insert(file_info.size(), *new equals_class(file_info.size(), new QFile(file_info.absoluteFilePath())));
+                equals_classes.insert(file_size, new equals_class(new QFile(file_info.absoluteFilePath())));
             } else {
-                equals_classes[file_info.size()].add_file(new QFile(file_info.absoluteFilePath()));
+                equals_classes[file_size]->add_file(new QFile(file_info.absoluteFilePath()));
             }
         }
-        if(dir_it.hasNext()) {
+        if (dir_it.hasNext()) {
             dir_it.next();
         } else {
             break;
@@ -67,12 +105,9 @@ void main_window::split_by_size(QMap<qint64, equals_class> &equals_classes, QDir
 }
 
 
-void main_window::split_by_hash(equals_class & cur_class)
+std::vector<QFile*> & main_window::split_by_hash(std::vector<QPair<xxh::hash64_t, QFile *>> & files)
 {
-    auto & files = cur_class.get_files();
-    if (files.size() == 1) {
-        return;
-    }
+    assert(files.size() > 1);
     std::vector<std::future<void>> vec_fut;
     for (auto & i : files) {
         vec_fut.emplace_back(std::async(std::launch::async, [](QPair<xxh::hash64_t, QFile*> & element)  {
@@ -80,6 +115,7 @@ void main_window::split_by_hash(equals_class & cur_class)
                 xxh::hash_state64_t hash;
                 if (!file->open(QIODevice::ReadOnly)) {
                     //todo обработка ошибки
+                     return;
                 }
                 std::vector<char> buffer(BUFFER_SIZE);
                 while (!file->atEnd()) {
@@ -95,26 +131,19 @@ void main_window::split_by_hash(equals_class & cur_class)
         i.wait();
     }
     std::sort(files.begin(), files.end());
-    for (int i = 0; i < files.size() - 1; ++i) {
+    std::vector<QFile *> *duplicates = new std::vector<QFile *>;
+    for (size_t i = 0; i < files.size() - 1; ++i) {
         if (files[i].first == files[i+1].first) {
-            int count = 0;
-            //QVector<QFile const&> duplicates;
+            size_t count = 0;
+            //можно бинарник впихнуть, но зачем
             while(i + count + 1 < files.size() && files[i + count].first == files[i + count +1].first) {
-                ++count;
+                duplicates->push_back(files[i+count++].second);
             }
-            ++count;
-            for (int j = i; j < i + count; ++j) {
-                QFileInfo file_info(*files[j].second);
-                QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
-                item->setText(0, file_info.fileName());
-                item->setText(1, QString::number(count));
-                item->setText(2, QString::number(file_info.size()));
-                ui->treeWidget->addTopLevelItem(item);
-            }
+            duplicates->push_back(files[i+count++].second);
             i += count;
         }
     }
-
+    return *duplicates;
 }
 
 

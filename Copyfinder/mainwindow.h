@@ -29,11 +29,11 @@ private slots:
 
 private:
     std::mutex ec_mutex;
-    QMap<qint64, equals_class> equals_classes;
+    QMap<qint64, equals_class*> equals_classes;
     std::unique_ptr<Ui::MainWindow> ui;
 private:
-    void split_by_size(QMap<qint64, equals_class> & equals_classes, QDirIterator && dir_it);
-    void split_by_hash(equals_class & cur_class);
+    void split_by_size(QMap<qint64, equals_class*> & equals_classes, QDirIterator && dir_it);
+    std::vector<QFile*> & split_by_hash(std::vector<QPair<xxh::hash64_t, QFile*>> &files);
 };
 
 bool check(QFile * first, QFile * second);
