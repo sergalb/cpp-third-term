@@ -37,19 +37,12 @@ void main_window::select_directory()
 
 void main_window::scan_directory(QString const& dir)
 {
+    assert(dir != nullptr && !dir.isEmpty());
+
     qRegisterMetaType<QVector<int>>("QVector<int>");
     ui->treeWidget->clear();
     setWindowTitle(QString("Directory Content - %1").arg(dir));
     split_by_size(equals_classes, QDirIterator(dir, QDir::NoDotAndDotDot | QDir::AllEntries, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks));
-    auto duplicates = equals_classes.operator[](0)->get_files();
-    for (size_t i = 1; i < 100000; ++i) {
-        if (equals_classes.find(i)!= equals_classes.end()) {
-            auto get = equals_classes.operator[](i)->get_files();
-            for (auto j : get) {
-                duplicates.push_back(j);
-            }
-        }
-    }
     std::vector<std::future<std::vector<QFile*> &>> split;
     for (auto & i : equals_classes) {
         std::vector<QPair<xxh::hash64_t, QFile*>> &get_files = i->get_files();
@@ -71,12 +64,9 @@ void main_window::scan_directory(QString const& dir)
             ui->treeWidget->addTopLevelItem(item);
             //delete item;
         }
-        if (spliter == 15) {
-            QCoreApplication::processEvents();
-            spliter = 0;
-        }
         ++spliter;
     }
+    QCoreApplication::processEvents();
     //todo это должно происходить не здесь, указатели на дубликаты хочу оставить, хотя все остальное неплохо бы выкинуть
     qDeleteAll(equals_classes.begin(), equals_classes.end());
     equals_classes.clear();
@@ -110,6 +100,9 @@ std::vector<QFile*> & main_window::split_by_hash(std::vector<QPair<xxh::hash64_t
     assert(files.size() > 1);
     std::vector<std::future<void>> vec_fut;
     for (auto & i : files) {
+        if(i.second == nullptr || !i.second->exists()) {
+            continue;
+        }
         vec_fut.emplace_back(std::async(std::launch::async, [](QPair<xxh::hash64_t, QFile*> & element)  {
                 QFile * file = element.second;
                 xxh::hash_state64_t hash;
