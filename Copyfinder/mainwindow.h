@@ -7,8 +7,9 @@
 #include <QDirIterator>
 #include "equals_class.h"
 #include <QFile>
-#include <thread>
-#include <mutex>
+#include <QFuture>
+#include <QProgressDialog>
+#include <future>
 
 namespace Ui {
 class MainWindow;
@@ -28,12 +29,15 @@ private slots:
     void scan_directory(QString const& dir);
 
 private:
-    std::mutex ec_mutex;
+    bool stop = false;
     QMap<qint64, equals_class*> equals_classes;
+    QVector<QFile *> duplicates;
     std::unique_ptr<Ui::MainWindow> ui;
 private:
-    void split_by_size(QMap<qint64, equals_class*> & equals_classes, QDirIterator && dir_it);
-    std::vector<QFile*> & split_by_hash(std::vector<QPair<xxh::hash64_t, QFile*>> &files);
+    void split_by_size(QDirIterator && dir_it);
+    void split_by_hash(std::vector<QPair<xxh::hash64_t, QFile*>> &files);
+    void pul_in_ui(QVector<QFuture<void>> & split);
+    void stop_finding();
 };
 
 bool check(QFile * first, QFile * second);
