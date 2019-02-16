@@ -22,7 +22,7 @@ add_library(xxhash STATIC xxhash_cpp/xxhash/xxhash.h xxhash_cpp/xxhash/xxhash.cp
 
 
 add_executable(Copyfinder main.cpp
-    mainwindow.h mainwindow.cpp equals_class.h equals_class.cpp)
+    mainwindow.h mainwindow.cpp equals_class.h equals_class.cpp scanner.cpp scanner.h)
 
 target_link_libraries(Copyfinder xxhash -lpthread)
 

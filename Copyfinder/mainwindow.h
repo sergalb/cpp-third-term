@@ -7,9 +7,7 @@
 #include <QDirIterator>
 #include "equals_class.h"
 #include <QFile>
-#include <thread>
-#include <mutex>
-
+#include "scanner.h"
 namespace Ui {
 class MainWindow;
 }
@@ -24,18 +22,17 @@ public:
 
 
 private slots:
-    void select_directory();
-    void scan_directory(QString const& dir);
+    void select_directory_and_scan();
+    void pull_in_ui();
+    void take_duplicates(QVector<QFile *> * duplicates);
 
 private:
-    std::mutex ec_mutex;
-    QMap<qint64, equals_class*> equals_classes;
+    QVector<QFile*> * duplicates;
+    //QVector<QFile*> exceptions_files;
     std::unique_ptr<Ui::MainWindow> ui;
 private:
-    void split_by_size(QMap<qint64, equals_class*> & equals_classes, QDirIterator && dir_it);
-    std::vector<QFile*> & split_by_hash(std::vector<QPair<xxh::hash64_t, QFile*>> &files);
 };
 
-bool check(QFile * first, QFile * second);
+
 
 #endif // MAINWINDOW_H
