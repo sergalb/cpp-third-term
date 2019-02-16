@@ -17,7 +17,7 @@ public:
     explicit scanner(QString const& root_path);
 signals:
     void finished();
-    void return_duplicates(QVector<QFile*> *duplicates);
+    void return_part_duplicates(QVector<QVector<QFile*>> * duplicates);
 
 public slots:
     void scan_directory();
@@ -25,11 +25,10 @@ public slots:
 private:
     QString root_path;
     QMap<qint64, equals_class*> equals_classes;
-    QVector<QFile*> *duplicates;
     QVector<QFile*> exceptions_files;
 private:
     void split_by_size(QMap<qint64, equals_class*> & equals_classes, QDirIterator && dir_it);
-    void split_by_hash(std::vector<QPair<xxh::hash64_t, QFile*>> &files);
+    QVector<QVector<QFile*>> & split_by_hash(std::vector<QPair<xxh::hash64_t, QFile*>> &files);
 };
 
 bool check(QFile * first, QFile * second);

@@ -38,8 +38,7 @@ void main_window::select_directory_and_scan()
     QThread* scan_thread = new QThread();
     scan->moveToThread(scan_thread);
     connect(scan_thread, &QThread::started, scan, &scanner::scan_directory);
-    connect(scan, &scanner::return_duplicates, this, &main_window::take_duplicates);
-    connect(scan, &scanner::finished, this, &main_window::pull_in_ui);
+    connect(scan, &scanner::return_part_duplicates, this, &main_window::take_part_duplicates);
     connect(scan, &scanner::finished, scan_thread, &QThread::quit);
     connect(scan_thread, &QThread::finished, scan, &scanner::deleteLater);
     connect(scan_thread, &QThread::finished, scan_thread, &QThread::deleteLater);
@@ -63,9 +62,20 @@ void main_window::pull_in_ui()
     QCoreApplication::processEvents();
 }
 
-void main_window::take_duplicates(QVector<QFile *> *duplicates)
+void main_window::take_part_duplicates(QVector<QVector<QFile *>>  *duplicates)
 {
-    this->duplicates = duplicates;
+    for (auto & group : *duplicates) {
+        for (int j = 0; j < group.size(); ++j) {
+            QFileInfo file_info(*group[j]);
+            QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
+            item->setText(0, file_info.fileName());
+            item->setText(1, QString::number(group.size()));
+            item->setText(2, QString::number(file_info.size()));
+            ui->treeWidget->addTopLevelItem(item);
+            //delete item;
+            this->duplicates->push_back(group[j]);
+        }
+    }
 }
 
 main_window::~main_window() = default;

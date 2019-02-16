@@ -1,5 +1,7 @@
 #include "scanner.h"
-
+#include <vector>
+#include <future>
+#include "openfileexception.h"
 scanner::scanner(QObject *parent) : QObject(parent){}
 
 scanner::scanner(const QString &root_path) : root_path(root_path){}
@@ -7,16 +9,19 @@ scanner::scanner(const QString &root_path) : root_path(root_path){}
 void scanner::scan_directory()
 {
     assert(root_path != nullptr && !root_path.isEmpty());
-    duplicates = new QVector<QFile*>();
     split_by_size(equals_classes, QDirIterator(root_path, QDir::NoDotAndDotDot | QDir::AllEntries, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks));
-    for (auto & i : equals_classes) {
-        std::vector<QPair<xxh::hash64_t, QFile*>> &get_files = i->get_files();
-        if (get_files.size() > 1) {
-            split_by_hash(get_files);
+    std::vector<std::future<QVector<QVector<QFile*>> & >> split;
+        for (auto & i : equals_classes) {
+            std::vector<QPair<xxh::hash64_t, QFile*>> &get_files = i->get_files();
+            if (get_files.size() <= 1) {
+                continue;
+            }
+            split.emplace_back(std::async(std::launch::async, &scanner::split_by_hash, this, std::ref(get_files)));
         }
-
-    }
-    emit return_duplicates(duplicates);
+        for (auto & i : split) {
+            auto part_duplicates = new QVector<QVector<QFile*>>(i.get());
+            emit return_part_duplicates(part_duplicates);
+        }
     emit finished();
 }
 
@@ -39,7 +44,7 @@ void scanner::split_by_size(QMap<qint64, equals_class*> &equals_classes, QDirIte
 }
 
 
-void scanner::split_by_hash(std::vector<QPair<xxh::hash64_t, QFile *>> & files)
+QVector<QVector<QFile*>> & scanner::split_by_hash(std::vector<QPair<xxh::hash64_t, QFile *>> & files)
 {
     assert(files.size() > 1);
     for (auto & element : files) {
@@ -59,30 +64,55 @@ void scanner::split_by_hash(std::vector<QPair<xxh::hash64_t, QFile *>> & files)
         element.first = hash.digest();
     }
     std::sort(files.begin(), files.end());
+    QVector<QVector<QFile*>> & duplicates = *new QVector<QVector<QFile*>>();
     for (size_t i = 0; i < files.size() - 1; ++i) {
         if (files[i].first == files[i+1].first) {
-            size_t count = 0;
-            //можно бинарник впихнуть, но зачем
-            while(i + count + 1 < files.size() && files[i + count].first == files[i + count +1].first) {
-                duplicates->push_back(files[i+count++].second);
+            size_t count = 1;
+            while(i + count < files.size() && files[i + count - 1].first == files[i + count].first) {
+                ++count;
             }
-            duplicates->push_back(files[i+count++].second);
+            duplicates.push_back(*new QVector<QFile*>());
+            duplicates[0].push_back(files[i].second);
+            for (size_t j = 1; j < count; ++j) {
+                bool added = false;
+                bool exception = false;
+                for (auto & group  : duplicates) {
+                    try {
+                        if (check(group[0], files[i + j].second)) {
+                            added = true;
+                            group.push_back(files[i+j].second);
+                            break;
+                        }
+                    } catch(OpenFileException &e) {
+                        exception = true;
+                        continue;
+                    }
+                }
+                if (exception) {
+                    continue;
+                }
+                if (!added) {
+                    duplicates.push_back(*new QVector<QFile*>());
+                    duplicates.back().push_back(files[i + j].second);
+                }
+            }
             i += count;
         }
     }
+    return duplicates;
 }
 
 
-bool check(QFile *first, QFile *second, QVector<QFile*> & exception_files)
+bool check(QFile *first, QFile *second)
 {
     assert(first->size() == second->size());
     std::vector<char> first_buf(BUFFER_SIZE);
     std::vector<char> second_buf(BUFFER_SIZE);
     if(!first->open(QIODevice::ReadOnly)) {
-        exception_files.push_back(first);
+        throw new OpenFileException();
     }
     if (!second->open(QIODevice::ReadOnly)) {
-            exception_files.push_back(second);
+        throw new OpenFileException();
     };
     while(!first->atEnd()) {
         //todo may be .read() throw exceptions?
@@ -94,6 +124,3 @@ bool check(QFile *first, QFile *second, QVector<QFile*> & exception_files)
     }
     return true;
 }
-
-
-
