@@ -23,11 +23,11 @@ public:
 
 private slots:
     void select_directory_and_scan();
-    void pull_in_ui();
+    void scanning_finished();
     void take_part_duplicates(QVector<QVector<QFile *>> * duplicates);
 
 private:
-    QVector<QFile*> * duplicates;
+    QVector<QFile*> duplicates;
     //QVector<QFile*> exceptions_files;
     std::unique_ptr<Ui::MainWindow> ui;
 private:

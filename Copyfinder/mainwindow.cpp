@@ -1,15 +1,12 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <iostream>
-#include <thread>
 #include <QCommonStyle>
 #include <QDesktopWidget>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMessageBox>
-#include <future>
-#include <functional>
 #include <QException>
 #include <QThread>
 main_window::main_window(QWidget *parent) :
@@ -39,43 +36,46 @@ void main_window::select_directory_and_scan()
     scan->moveToThread(scan_thread);
     connect(scan_thread, &QThread::started, scan, &scanner::scan_directory);
     connect(scan, &scanner::return_part_duplicates, this, &main_window::take_part_duplicates);
+    connect(scan, &scanner::finished, this, &main_window::scanning_finished);
     connect(scan, &scanner::finished, scan_thread, &QThread::quit);
     connect(scan_thread, &QThread::finished, scan, &scanner::deleteLater);
     connect(scan_thread, &QThread::finished, scan_thread, &QThread::deleteLater);
     scan_thread->start();
 }
 
-void main_window::pull_in_ui()
+void main_window::scanning_finished()
 {
+
     QMessageBox message;
-    message.setText("scanning is finished");
+    message.setText("scanning is finished, count duplicates" +  QString::number(duplicates.size()));
     message.exec();
-    for (int j = 0; j < duplicates->size(); ++j) {
-        QFileInfo file_info(*(duplicates->operator[](j)));
-        QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
-        item->setText(0, file_info.fileName());
-        item->setText(1, QString::number(duplicates->size()));
-        item->setText(2, QString::number(file_info.size()));
-        ui->treeWidget->addTopLevelItem(item);
-        //delete item;
-    }
-    QCoreApplication::processEvents();
+
 }
 
 void main_window::take_part_duplicates(QVector<QVector<QFile *>>  *duplicates)
 {
-    for (auto & group : *duplicates) {
+    for (QVector<QFile*> & group : *duplicates) {
+        if (group.size() <= 1) continue;
         for (int j = 0; j < group.size(); ++j) {
             QFileInfo file_info(*group[j]);
             QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
+            //std::cout << file_info.fileName().toStdString() << std::endl;
             item->setText(0, file_info.fileName());
             item->setText(1, QString::number(group.size()));
             item->setText(2, QString::number(file_info.size()));
             ui->treeWidget->addTopLevelItem(item);
             //delete item;
-            this->duplicates->push_back(group[j]);
+            this->duplicates.push_back(group[j]);
         }
+        QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
+        item->setText(0, " ");
+        item->setText(1, " ");
+        item->setText(2, " ");
+        ui->treeWidget->addTopLevelItem(item);
+
     }
+    //QCoreApplication::processEvents();
+    delete duplicates;
 }
 
 main_window::~main_window() = default;
