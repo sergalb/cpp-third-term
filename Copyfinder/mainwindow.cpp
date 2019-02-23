@@ -14,11 +14,11 @@ main_window::main_window(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    setGeometry(QStyle::alignedRect(Qt::LeftToRight, Qt::AlignCenter, size(), qApp->desktop()->availableGeometry()));
-    ui->treeWidget->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    ui->treeWidget->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-
     QCommonStyle style;
+    setGeometry(QStyle::alignedRect(Qt::LeftToRight, Qt::AlignCenter, size(), qApp->desktop()->availableGeometry()));
+    ui->treeWidget->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    ui->treeWidget->header()->setSectionResizeMode(1, QHeaderView::Interactive);
+    ui->treeWidget->header()->setSectionResizeMode(2, QHeaderView::Stretch);
     ui->actionFind_copy->setIcon(style.standardIcon(QCommonStyle::SP_DialogOpenButton));
     qRegisterMetaType<QVector<int>>("QVector<int>");
     connect(ui->actionFind_copy, &QAction::triggered, this, &main_window::select_directory_and_scan);
@@ -47,7 +47,7 @@ void main_window::scanning_finished()
 {
 
     QMessageBox message;
-    message.setText("scanning is finished, count duplicates" +  QString::number(duplicates.size()));
+    message.setText("scanning is finished, count duplicates " +  QString::number(duplicates.size()));
     message.exec();
 
 }
@@ -61,9 +61,10 @@ void main_window::take_part_duplicates(QVector<QVector<QFile *>>  *duplicates)
             QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
             //std::cout << file_info.fileName().toStdString() << std::endl;
             item->setText(0, file_info.fileName());
-            item->setText(1, QString::number(group.size()));
+            item->setText(1, file_info.path());
             item->setText(2, QString::number(file_info.size()));
             ui->treeWidget->addTopLevelItem(item);
+            //item->setBackgroundColor(0,)
             //delete item;
             this->duplicates.push_back(group[j]);
         }

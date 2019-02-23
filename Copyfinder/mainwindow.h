@@ -30,6 +30,7 @@ private:
     QVector<QFile*> duplicates;
     //QVector<QFile*> exceptions_files;
     std::unique_ptr<Ui::MainWindow> ui;
+    bool is_gray;
 private:
 };
 
