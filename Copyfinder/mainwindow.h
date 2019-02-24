@@ -8,6 +8,7 @@
 #include "equals_class.h"
 #include <QFile>
 #include "scanner.h"
+#include <QTreeWidgetItem>
 namespace Ui {
 class MainWindow;
 }
@@ -26,6 +27,8 @@ private slots:
     void scanning_finished();
     void take_part_duplicates(QVector<QVector<QFile *>> * duplicates);
     void stop();
+    void delete_duplicates();
+    void choose_deleted(QTreeWidgetItem * item);
 
 signals:
     void stop_scan();

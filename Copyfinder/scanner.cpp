@@ -16,7 +16,7 @@ scanner::~scanner()
 
 void scanner::scan_directory()
 {
-    assert(root_path != nullptr && !root_path.isEmpty());
+    assert(root_path != nullptr);
     split_by_size(equals_classes, QDirIterator(root_path, QDir::NoDotAndDotDot | QDir::AllEntries, QDirIterator::Subdirectories ));
 
     //вектор future от дубликатов - групп указателей на файлы

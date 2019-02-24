@@ -23,6 +23,9 @@ main_window::main_window(QWidget *parent) :
     qRegisterMetaType<QVector<int>>("QVector<int>");
     connect(ui->actionFind_copy, &QAction::triggered, this, &main_window::select_directory_and_scan);
     connect(ui->actionStop, &QAction::triggered, this, &main_window::stop);
+    connect(ui->treeWidget, &QTreeWidget::itemClicked, this, &main_window::choose_deleted);
+    connect(ui->treeWidget, &QTreeWidget::itemActivated, this, &main_window::choose_deleted);
+    connect(ui->actionDelete, &QAction::triggered, this, &main_window::delete_duplicates);
 }
 
 void main_window::select_directory_and_scan()
@@ -48,11 +51,9 @@ void main_window::select_directory_and_scan()
 
 void main_window::scanning_finished()
 {
-
     QMessageBox message;
     message.setText("scanning is finished ");
     message.exec();
-
 }
 
 void main_window::take_part_duplicates(QVector<QVector<QFile *>>  * duplicates)
@@ -66,6 +67,7 @@ void main_window::take_part_duplicates(QVector<QVector<QFile *>>  * duplicates)
             item->setText(0, file_info.fileName());
             item->setText(1, file_info.path());
             item->setText(2, QString::number(file_info.size()));
+            item->setSelected(false);
             ui->treeWidget->addTopLevelItem(item);
             //item->setBackgroundColor(0,)
         }
@@ -82,6 +84,30 @@ void main_window::take_part_duplicates(QVector<QVector<QFile *>>  * duplicates)
 void main_window::stop()
 {
     emit stop_scan();
+}
+
+void main_window::choose_deleted(QTreeWidgetItem *item)
+{
+    if (item->text(1)==" ") {
+        return;
+    }
+    item->setSelected(!item->isSelected());
+    QColor color = (item->isSelected()) ? Qt::blue : Qt::black;
+    item->setTextColor(0, color);
+}
+void main_window::delete_duplicates() {
+    if(QMessageBox::question(this, "Delete duplicates", "Selected filles will be deleted, continue?") == QMessageBox::Yes) {
+        QTreeWidgetItemIterator it(ui->treeWidget);
+        while (*it) {
+            if ((*it)->isSelected()) {
+                QFile file((*it)->text(1));
+                if (!file.remove()) {
+                    QMessageBox::information(this, "Error", "can't delete file " + (*it)->text(1));
+                }
+            }
+        }
+        QMessageBox::information(this, "Delete duplicates", "Duplicates are deleted");
+    }
 }
 
 main_window::~main_window() = default;
