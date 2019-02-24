@@ -72,7 +72,7 @@
    </attribute>
    <addaction name="actionFind_copy"/>
    <addaction name="actionDelete"/>
-   <addaction name="actionCancel"/>
+   <addaction name="actionStop"/>
   </widget>
   <action name="actionFind_copy">
    <property name="text">
@@ -96,12 +96,12 @@
     <string>Del</string>
    </property>
   </action>
-  <action name="actionCancel">
+  <action name="actionStop">
    <property name="text">
-    <string>&amp;Cancel</string>
+    <string>&amp;Stop</string>
    </property>
    <property name="toolTip">
-    <string>Cancel (Esc)</string>
+    <string>Stop (Esc)</string>
    </property>
    <property name="shortcut">
     <string>Esc</string>

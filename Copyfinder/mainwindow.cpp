@@ -22,6 +22,7 @@ main_window::main_window(QWidget *parent) :
     ui->actionFind_copy->setIcon(style.standardIcon(QCommonStyle::SP_DialogOpenButton));
     qRegisterMetaType<QVector<int>>("QVector<int>");
     connect(ui->actionFind_copy, &QAction::triggered, this, &main_window::select_directory_and_scan);
+    connect(ui->actionStop, &QAction::triggered, this, &main_window::stop);
 }
 
 void main_window::select_directory_and_scan()
@@ -31,7 +32,7 @@ void main_window::select_directory_and_scan()
                                                     QString(), QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
     ui->treeWidget->clear();
     setWindowTitle(QString("Directory Content - %1").arg(dir));
-    scanner* scan = new scanner(dir);
+    scan = new scanner(dir);
     QThread* scan_thread = new QThread();
     scan->moveToThread(scan_thread);
     connect(scan_thread, &QThread::started, scan, &scanner::scan_directory);
@@ -40,6 +41,8 @@ void main_window::select_directory_and_scan()
     connect(scan, &scanner::finished, scan_thread, &QThread::quit);
     connect(scan_thread, &QThread::finished, scan, &scanner::deleteLater);
     connect(scan_thread, &QThread::finished, scan_thread, &QThread::deleteLater);
+    connect(scan, &scanner::stoped, scan_thread, &QThread::quit);
+    connect(this, &main_window::stop_scan, scan, &scanner::stop);
     scan_thread->start();
 }
 
@@ -47,12 +50,12 @@ void main_window::scanning_finished()
 {
 
     QMessageBox message;
-    message.setText("scanning is finished, count duplicates " +  QString::number(duplicates.size()));
+    message.setText("scanning is finished ");
     message.exec();
 
 }
 
-void main_window::take_part_duplicates(QVector<QVector<QFile *>>  *duplicates)
+void main_window::take_part_duplicates(QVector<QVector<QFile *>>  * duplicates)
 {
     for (QVector<QFile*> & group : *duplicates) {
         if (group.size() <= 1) continue;
@@ -65,8 +68,6 @@ void main_window::take_part_duplicates(QVector<QVector<QFile *>>  *duplicates)
             item->setText(2, QString::number(file_info.size()));
             ui->treeWidget->addTopLevelItem(item);
             //item->setBackgroundColor(0,)
-            //delete item;
-            this->duplicates.push_back(group[j]);
         }
         QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
         item->setText(0, " ");
@@ -75,8 +76,12 @@ void main_window::take_part_duplicates(QVector<QVector<QFile *>>  *duplicates)
         ui->treeWidget->addTopLevelItem(item);
 
     }
-    //QCoreApplication::processEvents();
     delete duplicates;
+}
+
+void main_window::stop()
+{
+    emit stop_scan();
 }
 
 main_window::~main_window() = default;

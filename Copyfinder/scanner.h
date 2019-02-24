@@ -15,17 +15,21 @@ class scanner : public QObject
 public:
     explicit scanner(QObject *parent = nullptr);
     explicit scanner(QString const& root_path);
+    ~scanner();
 signals:
     void finished();
     void return_part_duplicates(QVector<QVector<QFile*>> * duplicates);
+    void stoped();
 
 public slots:
     void scan_directory();
+    void stop();
 
 private:
     QString root_path;
     QMap<qint64, equals_class*> equals_classes;
-    QVector<QFile*> exceptions_files;
+    QVector<QFile *> exceptions_files;
+    bool is_stoped;
 private:
     void split_by_size(QMap<qint64, equals_class*> & equals_classes, QDirIterator && dir_it);
     QVector<QVector<QFile*>> * split_by_hash(std::vector<QPair<xxh::hash64_t, QFile*>> &files);

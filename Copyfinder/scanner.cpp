@@ -9,14 +9,23 @@ scanner::scanner(QObject *parent) : QObject(parent){}
 
 scanner::scanner(const QString &root_path) : root_path(root_path){}
 
+scanner::~scanner()
+{
+    qDeleteAll(equals_classes);
+}
+
 void scanner::scan_directory()
 {
     assert(root_path != nullptr && !root_path.isEmpty());
     split_by_size(equals_classes, QDirIterator(root_path, QDir::NoDotAndDotDot | QDir::AllEntries, QDirIterator::Subdirectories ));
-    //std::vector<std::future<QVector<QVector<QFile*>> & >> split;
+
     //вектор future от дубликатов - групп указателей на файлы
     QVector<QFuture<QVector<QVector<QFile*>>*>> split;
     for (auto & i : equals_classes) {
+        if (is_stoped) {
+            emit stoped();
+            return;
+        }
         std::vector<QPair<xxh::hash64_t, QFile*>> &get_files = i->get_files();
         if (get_files.size() <= 1) {
             continue;
@@ -25,6 +34,10 @@ void scanner::scan_directory()
         split.push_back(fut);
     }
     for (auto & i : split) {
+        if (is_stoped) {
+            emit stoped();
+            return;
+        }
         QVector<QVector<QFile*>> * part_duplicates = i.result();
         if (!part_duplicates->isEmpty()) {
             emit return_part_duplicates(part_duplicates);
@@ -35,9 +48,17 @@ void scanner::scan_directory()
     emit finished();
 }
 
+void scanner::stop()
+{
+    is_stoped = true;
+}
+
 void scanner::split_by_size(QMap<qint64, equals_class*> &equals_classes, QDirIterator && dir_it)
 {
     while(dir_it.hasNext()) {
+        if (is_stoped) {
+            return;
+        }
         dir_it.next();
         QFileInfo file_info = dir_it.fileInfo();
         if (!file_info.isDir()) {
@@ -60,13 +81,15 @@ QVector<QVector<QFile*>> * scanner::split_by_hash(std::vector<QPair<xxh::hash64_
     std::sort(files.begin(), files.end(), [](QPair<xxh::hash64_t, QFile *> const & first, QPair<xxh::hash64_t, QFile *> const & second) {return first.first < second.first;});
     QVector<QVector<QFile*>> & duplicates = *new QVector<QVector<QFile*>>();
     for (size_t i = 0; i < files.size() - 1; ++i) {
+        if (is_stoped) {
+            return &duplicates;
+        }
         if (files[i].first == files[i+1].first) {
             size_t count = 1;
             while(i + count < files.size() && files[i + count - 1].first == files[i + count].first) {
                 ++count;
             }
-            duplicates.push_back(*new QVector<QFile*>(1, files[i].second));
-
+            duplicates.push_back(QVector<QFile*>(1, files[i].second));
             for (size_t j = i + 1; j < i + count; ++j) {
                 bool added = false;
                 bool exception = false;
@@ -78,7 +101,7 @@ QVector<QVector<QFile*>> * scanner::split_by_hash(std::vector<QPair<xxh::hash64_
                             break;
                         }
                     } catch(OpenFileException &e) {
-                        //std::cout << "exception" << std::endl;
+                        //std::cout << e.what() << std::endl;
                         exception = true;
                         continue;
                     }
@@ -87,7 +110,7 @@ QVector<QVector<QFile*>> * scanner::split_by_hash(std::vector<QPair<xxh::hash64_
                     continue;
                 }
                 if (!added) {
-                    duplicates.push_back(*new QVector<QFile*>(1, files[j].second));
+                    duplicates.push_back(QVector<QFile*>(1, files[j].second));
                 }
             }
             i += count;

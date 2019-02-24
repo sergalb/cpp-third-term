@@ -25,10 +25,13 @@ private slots:
     void select_directory_and_scan();
     void scanning_finished();
     void take_part_duplicates(QVector<QVector<QFile *>> * duplicates);
+    void stop();
+
+signals:
+    void stop_scan();
 
 private:
-    QVector<QFile*> duplicates;
-    //QVector<QFile*> exceptions_files;
+    scanner *scan;
     std::unique_ptr<Ui::MainWindow> ui;
     bool is_gray;
 private:
