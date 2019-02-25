@@ -23,7 +23,7 @@ main_window::main_window(QWidget *parent) :
     qRegisterMetaType<QVector<int>>("QVector<int>");
     connect(ui->actionFind_copy, &QAction::triggered, this, &main_window::select_directory_and_scan);
     connect(ui->actionStop, &QAction::triggered, this, &main_window::stop);
-    connect(ui->treeWidget, &QTreeWidget::itemClicked, this, &main_window::choose_deleted);
+    //connect(ui->treeWidget, &QTreeWidget::itemClicked, this, &main_window::choose_deleted);
     connect(ui->treeWidget, &QTreeWidget::itemActivated, this, &main_window::choose_deleted);
     connect(ui->actionDelete, &QAction::triggered, this, &main_window::delete_duplicates);
 }
@@ -65,7 +65,7 @@ void main_window::take_part_duplicates(QVector<QVector<QFile *>>  * duplicates)
             QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
             //std::cout << file_info.fileName().toStdString() << std::endl;
             item->setText(0, file_info.fileName());
-            item->setText(1, file_info.path());
+            item->setText(1, file_info.absoluteFilePath());
             item->setText(2, QString::number(file_info.size()));
             item->setSelected(false);
             ui->treeWidget->addTopLevelItem(item);
@@ -88,25 +88,41 @@ void main_window::stop()
 
 void main_window::choose_deleted(QTreeWidgetItem *item)
 {
-    if (item->text(1)==" ") {
+    if (item->text(2)==" ") {
         return;
     }
-    item->setSelected(!item->isSelected());
-    QColor color = (item->isSelected()) ? Qt::blue : Qt::black;
+    QColor color = (item->textColor(0) == Qt::black ) ? Qt::blue : Qt ::black;
+    if (item->textColor(0) == Qt::blue) {
+        --count_deleted;
+        color = Qt::black;
+    } else {
+        ++count_deleted;
+        color = Qt::blue;
+    }
     item->setTextColor(0, color);
+    std::cout << count_deleted << std::endl;
+
+
 }
 void main_window::delete_duplicates() {
-    if(QMessageBox::question(this, "Delete duplicates", "Selected filles will be deleted, continue?") == QMessageBox::Yes) {
+    if(QMessageBox::question(this, "Delete duplicates", "Selected files will be deleted, continue?") == QMessageBox::Yes) {
         QTreeWidgetItemIterator it(ui->treeWidget);
+        int real_deleted = 0;
+
         while (*it) {
-            if ((*it)->isSelected()) {
+            //--count_deleted;
+            if ((*it)->text(2) != " " && (*it)->textColor(0) == Qt::blue) {
                 QFile file((*it)->text(1));
                 if (!file.remove()) {
                     QMessageBox::information(this, "Error", "can't delete file " + (*it)->text(1));
+                } else {
+                    ++real_deleted;
+                   (*it)->setHidden(true);
                 }
             }
+            ++it;
         }
-        QMessageBox::information(this, "Delete duplicates", "Duplicates are deleted");
+        QMessageBox::information(this, "Delete duplicates", QString::number(real_deleted) + " duplicates are deleted");
     }
 }
 

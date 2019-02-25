@@ -36,7 +36,7 @@ signals:
 private:
     scanner *scan;
     std::unique_ptr<Ui::MainWindow> ui;
-    bool is_gray;
+    int count_deleted = 0;
 private:
 };
 

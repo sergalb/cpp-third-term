@@ -29,7 +29,7 @@ private:
     QString root_path;
     QMap<qint64, equals_class*> equals_classes;
     QVector<QFile *> exceptions_files;
-    bool is_stoped;
+    bool is_stoped = false;
 private:
     void split_by_size(QMap<qint64, equals_class*> & equals_classes, QDirIterator && dir_it);
     QVector<QVector<QFile*>> * split_by_hash(std::vector<QPair<xxh::hash64_t, QFile*>> &files);
