@@ -23,7 +23,6 @@ main_window::main_window(QWidget *parent) :
     qRegisterMetaType<QVector<int>>("QVector<int>");
     connect(ui->actionFind_copy, &QAction::triggered, this, &main_window::select_directory_and_scan);
     connect(ui->actionStop, &QAction::triggered, this, &main_window::stop);
-    //connect(ui->treeWidget, &QTreeWidget::itemClicked, this, &main_window::choose_deleted);
     connect(ui->treeWidget, &QTreeWidget::itemActivated, this, &main_window::choose_deleted);
     connect(ui->actionDelete, &QAction::triggered, this, &main_window::delete_duplicates);
 }
@@ -63,13 +62,11 @@ void main_window::take_part_duplicates(QVector<QVector<QFile *>>  * duplicates)
         for (int j = 0; j < group.size(); ++j) {
             QFileInfo file_info(*group[j]);
             QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
-            //std::cout << file_info.fileName().toStdString() << std::endl;
             item->setText(0, file_info.fileName());
             item->setText(1, file_info.absoluteFilePath());
             item->setText(2, QString::number(file_info.size()));
             item->setSelected(false);
             ui->treeWidget->addTopLevelItem(item);
-            //item->setBackgroundColor(0,)
         }
         QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
         item->setText(0, " ");
@@ -100,17 +97,15 @@ void main_window::choose_deleted(QTreeWidgetItem *item)
         color = Qt::blue;
     }
     item->setTextColor(0, color);
-    std::cout << count_deleted << std::endl;
-
-
 }
+
 void main_window::delete_duplicates() {
     if(QMessageBox::question(this, "Delete duplicates", "Selected files will be deleted, continue?") == QMessageBox::Yes) {
         QTreeWidgetItemIterator it(ui->treeWidget);
         int real_deleted = 0;
 
-        while (*it) {
-            //--count_deleted;
+        while (count_deleted > 0 && *it) {
+            --count_deleted;
             if ((*it)->text(2) != " " && (*it)->textColor(0) == Qt::blue) {
                 QFile file((*it)->text(1));
                 if (!file.remove()) {
