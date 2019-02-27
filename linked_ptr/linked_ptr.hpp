@@ -20,6 +20,7 @@ namespace smart_ptr {
                 return right;
             }
 
+
             ~node() {
                 if (left != nullptr) {
                     left->right = right;
@@ -27,24 +28,26 @@ namespace smart_ptr {
                 if (right != nullptr) {
                     right->left = left;
                 }
+                left = nullptr;
+                right = nullptr;
             }
 
             node(node &other) {
-                other.right = right;
-                other.left = this;
-                if (right != nullptr) {
-                    right->left = &other;
+                if (other.right != nullptr) {
+                    right->left = this;
                 }
-                right = &other;
+                right = other.right;
+                left = &other;
+                other.right = this;
             }
 
             node &operator=(node const &other) {
-                other.right = right;
-                other.left = this;
-                if (right != nullptr) {
-                    right->left = const_cast<node *>(&other);
+                if (other.right != nullptr) {
+                    right->left = this;
                 }
-                right = const_cast<node *>(&other);
+                right = other.right;
+                left = const_cast<node *>(&other);
+                other.right = this;
             }
 
             node() : left(nullptr), right(nullptr) {};
@@ -77,7 +80,7 @@ namespace smart_ptr {
             mutable node *right;
         };
 
-        void swap(node &first, node &second) noexcept {
+        void swap(node &first, node &second) {
             first.swap(second);
         }
     }
@@ -97,9 +100,19 @@ namespace smart_ptr {
         template<typename U, typename = std::enable_if<std::is_convertible_v<U *, T *>>>
         explicit linked_ptr(linked_ptr<U> const &other) noexcept : data(data), _node(other._node) {};
 
+
         linked_ptr<T> &operator=(linked_ptr<T> const &other) noexcept {
-            _node = node(other._node);
+            _node = other._node;
             data = other.data;
+            return *this;
+        }
+        ~linked_ptr() noexcept {
+            if (_node.is_last() && data != nullptr) {
+                delete data;
+            }
+            data = nullptr;
+            _node.~node();
+
         }
 
         template<typename U, typename = std::enable_if<std::is_convertible_v<U *, T *>>>
@@ -110,25 +123,19 @@ namespace smart_ptr {
 
 
         void reset(T *new_data = nullptr) {
-            ~_node();
-            if (unique()) {
-                delete data;
-            }
+            _node.~node();
             data = new_data;
         }
 
         template<typename U, typename = std::enable_if<std::is_convertible_v<U *, T *>>>
         void reset(U *new_data) {
-            ~_node();
-            if (unique()) {
-                delete data;
-            }
+            _node.~node();
             data = new_data;
         }
 
         void swap(linked_ptr<T> &other) noexcept {
             std::swap(data, other.data);
-            std::swap(_node, other._node);
+            _node.swap(other._node);
         }
 
         T *get() const noexcept {
@@ -144,7 +151,7 @@ namespace smart_ptr {
         }
 
         T *operator->() const noexcept {
-            return *get();
+            return get();
         }
 
         operator bool() const noexcept {
@@ -152,30 +159,25 @@ namespace smart_ptr {
         }
 
 
-    private:
+    public:
         T *data;
         mutable details::node _node;
     };
 
-    template<typename T>
-    void swap(linked_ptr<T> &lhs, linked_ptr<T> &rhs) noexcept {
-        lhs.swap(rhs);
-    }
-
     template<typename T, typename U>
     bool operator==(linked_ptr<T> const &first, linked_ptr<U> const &second) {
-        return first.data == second.data;
+        return first.get() == second.get();
     }
 
     template<typename T, typename U>
     bool operator!=(linked_ptr<T> const &first, linked_ptr<U> const &second) {
-        return first.data != second.data;
+        return first.get() != second.get();
     }
 
 
     template<typename T, typename U>
     bool operator<(linked_ptr<T> const &first, linked_ptr<U> const &second) {
-        return first.data < second.data;
+        return first.get() < second.get();
     }
 
     template<typename T, typename U>
@@ -192,5 +194,9 @@ namespace smart_ptr {
         return first == second || first > second;
     }
 
+    template <typename T>
+    linked_ptr<T> make_linked_ptr(T* data) {
+        return linked_ptr<T>(data);
+    }
 }
 #endif //LINKED_PTR_LINKEDPTR_H
