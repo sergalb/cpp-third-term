@@ -1,6 +1,5 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "scanner.h"
 #include <iostream>
 #include <QCommonStyle>
 #include <QDesktopWidget>
@@ -33,18 +32,17 @@ void main_window::select_directory_and_scan()
                                                     QString(), QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
     ui->treeWidget->clear();
     setWindowTitle(QString("Directory Content - %1").arg(dir));
-    scanner * scan = new scanner(dir);
-//    QThread* scan_thread = new QThread();
-//    scan->moveToThread(scan_thread);
-//    connect(scan_thread, &QThread::started, scan, &scanner::scan_directory);
-//    connect(scan, &scanner::return_part_duplicates, this, &main_window::take_part_duplicates);
-//    connect(scan, &scanner::finished, this, &main_window::scanning_finished);
-//    connect(scan, &scanner::finished, scan_thread, &QThread::quit);
-//    connect(scan_thread, &QThread::finished, scan, &scanner::deleteLater);
-//    connect(scan_thread, &QThread::finished, scan_thread, &QThread::deleteLater);
-//    connect(scan, &scanner::stoped, scan_thread, &QThread::quit);
-//    connect(this, &main_window::stop_scan, scan, &scanner::stop);
-//    scan_thread->start();
+    scan.reset(new scanner(dir));
+    QThread *scan_thread = new QThread();
+    scan->moveToThread(scan_thread);
+    connect(scan_thread, &QThread::started, scan.get(), &scanner::scan_directory);
+    connect(scan.get(), &scanner::substr_finded, this, &main_window::pull_in_ui);
+    connect(scan.get(), &scanner::finished, this, &main_window::scanning_finished);
+    connect(scan.get(), &scanner::finished, scan_thread, &QThread::quit);
+    connect(scan_thread, &QThread::finished, scan_thread, &QThread::deleteLater);
+    connect(scan.get(), &scanner::stoped, scan_thread, &QThread::quit);
+    connect(this, &main_window::stop_scan, scan.get(), &scanner::stop);
+    scan_thread->start();
 }
 
 void main_window::scanning_finished()
@@ -59,4 +57,20 @@ void main_window::stop()
     emit stop_scan();
 }
 
-main_window::~main_window() = default;
+void main_window::pull_in_ui(QVector<QPair<int, QFile*> > * contains_templ)
+{   QMessageBox::information(this, "entries", "end search");
+    for (QPair<int, QFile*> & entry: *contains_templ) {
+        QFileInfo file_info(*entry.second);
+        QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
+        item->setText(0, file_info.fileName());
+        item->setText(1, file_info.absoluteFilePath());
+        item->setText(2, QString::number(entry.first));
+        ui->treeWidget->addTopLevelItem(item);
+
+    }
+    delete contains_templ;
+}
+
+
+main_window::~main_window() {
+}
