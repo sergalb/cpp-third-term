@@ -8,17 +8,22 @@
 #include <QList>
 #include "utf8_validator.hpp"
 #include <functional>
+#include <QHash>
+#include <utility>
+#include <mutex>
+#include <algorithm>
 using std::cout;
 using std::endl;
 
 scanner::scanner(QObject *parent) : QObject(parent){}
 
-scanner::scanner(const QString &root_path) : root_path(root_path), index(){}
+scanner::scanner(const QString &root_path) : root_path(root_path), index(){
+    connect(&file_watcher, &QFileSystemWatcher::fileChanged, this, &scanner::check_change);
+}
 
 scanner::~scanner(){
-    for (auto &i: index) {
-        delete i.first;
-        delete i.second;
+    for (auto i = index.begin(); i != index.end(); ++i) {
+        delete i.value();
     }
 }
 
@@ -26,159 +31,253 @@ void scanner::scan_directory()
 {
     //qRegisterMetaType<trigrams>("trigrams");
     QDirIterator dir_it(root_path, QDir::NoDotAndDotDot | QDir::AllEntries, QDirIterator::Subdirectories);
-    QVector<QFuture<void>> parallel_worker;
+    QVector<QFuture<std::pair<QString, trigrams>>> parallel_worker;
     while(dir_it.hasNext()) {
+        if (QThread::currentThread()->isInterruptionRequested()) {
+            for (auto i : parallel_worker) {
+                auto res = i.result();
+                delete res.second;
+            }
+            break;
+        }
         dir_it.next();
         QFileInfo file_info = dir_it.fileInfo();
         if (!file_info.isDir()) {
-            QFile * file = new QFile(file_info.absoluteFilePath());
-            if (file->size() < SMALL_FILE_SIZE) {
-                check_small_file(file);
+            if (static_cast<size_t>(file_info.size()) < SMALL_FILE_SIZE) {
+                check_small_file(QString(file_info.absoluteFilePath()), true);
             } else {
-                index.push_back(qMakePair(file, new std::set<QVector<char>>()));
-                parallel_worker.push_back(QtConcurrent::run(this, &scanner::validate_file, file, index.back().second));
+                parallel_worker.push_back(QtConcurrent::run(this, &scanner::validate_file, QString(file_info.absoluteFilePath()), true));
             }
         }
     }
+    if (QThread::currentThread()->isInterruptionRequested()) {
+        return;
+    }
+    emit update_progress(15);
+    int step = std::max(1, parallel_worker.size()/84);
+    int progress = 0;
     for (auto i : parallel_worker) {
-        i.waitForFinished();
+        auto res = i.result();
+        if (QThread::currentThread()->isInterruptionRequested()) {
+            delete res.second;
+            continue;
+        }
+        if (++progress % step == 0) {
+            emit update_progress(15 + progress/step);
+        }
+        if (res.second != nullptr) {
+            index.insert(res.first, res.second);
+        }
+    }
+    if (QThread::currentThread()->isInterruptionRequested()) {
+        return;
+    }
+    QList<QString> keys = index.keys();
+    for (auto &file_path : keys) {
+        file_watcher.addPath(file_path);
     }
 
-    QFuture<void> filter = QtConcurrent::filter(index, [](QPair<QFile*, trigrams> element) -> bool {
-                                                            bool ans = !element.second->empty();
-                                                            if (!ans) {
-                                                                    delete element.first;
-                                                                    delete element.second;
-                                                            }
-                                                            return ans;});
-    filter.waitForFinished();
-    emit finished();
-    find_in_all_files("KMSAuto");
+    connect(&file_watcher, &QFileSystemWatcher::fileChanged, this, &scanner::check_change);
+    emit update_progress(100);
+    emit finish_index();
 }
 
-void scanner::stop()
+void scanner::find_in_all_files(std::string const templ) const
 {
-
-}
-
-void scanner::find_in_all_files(std::string const& templ) const
-{
-    QVector<QPair<int, QFile*>> &contains_templ = *new QVector<QPair<int, QFile*>>();
+    std::lock_guard<std::mutex> lock(search_mutex);
+    QVector<QPair<int, QString const>> &contains_templ = *new QVector<QPair<int, QString const>>();    
     if (templ.size() < SMALL_FILE_SIZE) {
         find_in_small(contains_templ, templ);
     }
-    std::set<QVector<char>> templ_trigrams;
+    emit update_progress(20);
+    std::unordered_set<std::string> templ_trigrams;
     QQueue<char> trigram;
     for (auto const &symb : templ) {
+        if (QThread::currentThread()->isInterruptionRequested()) {
+            delete &contains_templ;
+            return;
+        }
         trigram.enqueue(symb);
         if(trigram.size() == 3) {
-            templ_trigrams.insert(trigram.toVector());
+            std::string str(3, '0');
+            size_t ind = 0;
+            for (auto &i : trigram) {
+                str[ind++] = i;
+            }
+            templ_trigrams.insert(std::move(str));
             trigram.dequeue();
         }
     }
-    auto find_functor = std::bind(&scanner::find_substring, this, std::placeholders::_1, templ, templ_trigrams);
-    QFuture<QPair<int, QFile*>> parallel_finder = QtConcurrent::mapped(index, find_functor);
-    for (auto const& res : parallel_finder.results()) {
+    //auto find_functor = std::bind(&scanner::find_substring, this, std::placeholders::_1, std::placeholders::_2, templ, templ_trigrams);
+    int step = std::max(1, index.size()/10);
+    int progress = 0;
+    QVector<QFuture<QPair<int, QString >>> parallel_finder;
+    for (auto i = index.begin(); i != index.end(); ++i) {
+        if (QThread::currentThread()->isInterruptionRequested()) {
+            for (auto &i : parallel_finder) {
+                i.result();
+            }
+            delete &contains_templ;
+            return;
+        }
+        parallel_finder.push_back(QtConcurrent::run(this, &scanner::find_substring,
+                                                    std::cref(i.key()), i.value(), std::cref(templ),
+                                                    std::cref(templ_trigrams)));
+        if (++progress % step == 0) {
+            emit update_progress(20 + progress/step);
+        }
+    }
+    step = std::max(1,index.size()/69);
+    progress = 0;
+    for (auto i : parallel_finder) {
+        if (QThread::currentThread()->isInterruptionRequested()) {
+            delete &contains_templ;
+            for (auto &i : parallel_finder) {
+                i.result();
+            }
+            return;
+        }
+        auto res = i.result();
         if (res.first != -1) {
             contains_templ.push_back(res);
         }
+        if (++progress % step == 0) {
+            emit update_progress(30 + progress/step);
+        }
     }
+    emit update_progress(100);
     emit substr_finded(&contains_templ);
 }
 
-void scanner::validate_file(QFile * file , trigrams file_trigrams)
+void scanner::check_change(const QString &path)
 {
-    if (!file->open(QIODevice::ReadOnly)) {
-        //todo check exception
-        return;
+    std::lock_guard<std::mutex> lock(search_mutex);
+    if (small_files.contains(path)) {
+        check_small_file(QString(path), false);
+    } else if (index.contains(path)) {
+        validate_file(path, false);
     }
+}
+
+std::pair<QString, trigrams> scanner::validate_file(QString path, bool need_validate)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        std::cout<< "Can't open file: " << path.toStdString() << endl;
+        return std::make_pair(path, nullptr);
+    }
+
     QQueue<char> trigram;
     std::vector<char> buffer(BUFFER_SIZE);
     std::uint32_t state = UTF8_ACCEPT;
-    while (!file->atEnd()) {
-        size_t count_read = static_cast<size_t>(file->read(&buffer[0], BUFFER_SIZE));
-        buffer.resize(count_read);
-        if (validate_utf8(&state, &buffer[0], buffer.size()) == UTF8_REJECT) {
-            file_trigrams->clear();
-            file->close();
-            return;
+    trigrams file_trigrams = new std::unordered_set<std::string>();
+    while (!file.atEnd()) {
+        qint64 count_read = (file.read(&buffer[0], BUFFER_SIZE));
+        if (count_read == -1) {
+            std::cout<< "Can't open file: " << path.toStdString() << endl;
+            delete file_trigrams;
+            file.close();
+            return std::make_pair(path, nullptr);
+        }
+        buffer.resize(static_cast<size_t>(count_read));
+        if (need_validate && validate_utf8(&state, &buffer[0], buffer.size()) == UTF8_REJECT) {
+            delete file_trigrams;            
+            file.close();
+            return std::make_pair(path, nullptr);
         }
         for (size_t i= 0; i < buffer.size(); ++i) {
             trigram.enqueue(buffer[i]);
             if (trigram.size() == 3) {
-                file_trigrams->insert(trigram.toVector());
-                //todo спросить про адекватность этого (костыля?): не хочу из разных тредов трогать одну память,
-                //поэтому из основного треда создаю элемент в векторе и отдаю на изменение рабочему треду,
-                //но по итогу работы треда я могу захотеть удалить элемент - помечу как ненужный, а потом удалю все лишнее вместе
-                if (file_trigrams->size() > MAX_TRIGRAM_COUNT) {
-                    file_trigrams->clear();
-                    file->close();
-                    return;
+                std::string str(3, '\0');
+                size_t ind = 0;
+                for (auto &i : trigram) {
+                    str[ind++] = i;
+                }
+                file_trigrams->insert(std::move(str));
+                if (need_validate && file_trigrams->size() > MAX_TRIGRAM_COUNT) {
+                    delete file_trigrams;
+                    file.close();
+                    return std::make_pair(path, nullptr);
                 }
                 trigram.dequeue();
             }
         }
     }
-    file->close();
+    file.close();
+    return std::make_pair(path, file_trigrams);
 }
 
-void scanner::check_small_file(QFile *file)
+void scanner::check_small_file(QString && path, bool need_validate)
 {
-    if (!file->open(QIODevice::ReadOnly)) {
-        //todo check exception
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        std::cout<< "Can't open file: " << path.toStdString() << endl;
         return;
     }
-    QByteArray data = file->read(file->size());
+    QByteArray data = file.read(file.size());
     std::uint32_t state = UTF8_ACCEPT;
-    if (validate_utf8(&state, data, data.size()) != UTF8_REJECT) {
-        small_files.push_back(qMakePair(file, data.toStdString()));
+    if (!need_validate || validate_utf8(&state, data, static_cast<size_t>(data.size())) != UTF8_REJECT) {
+        small_files.insert(path, data.toStdString());
+        file_watcher.addPath(path);
     }
-    file->close();
+    file.close();
 }
 
-QPair<int, QFile *> scanner::find_substring(QPair<QFile *, trigrams> file_tgm, std::string  const& templ, std::set<QVector<char>> const& templ_trigrams) const
+QPair<int, QString> scanner::find_substring(QString const& path, trigrams tgm, std::string const& templ, std::unordered_set<std::string> const& templ_trigrams) const
 {
-
-    for (auto const& trigram : templ_trigrams) {
-        if (file_tgm.second->count(trigram) == 0) {
-            return qMakePair(-1, file_tgm.first);
+    //for (auto it = templ_trigrams.begin(); it != templ_trigrams.end(); ++it){
+    for (auto templ_tgm : templ_trigrams) {
+        if (tgm->count(templ_tgm) == 0) {
+            return qMakePair(-1, path);
         }
     }
-    if (!file_tgm.first->open(QIODevice::ReadOnly)) {
-        //TODO EXCEPTIONS
-        return qMakePair(-1, file_tgm.first);
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        std::cout<< "Can't open file: " << path.toStdString() << endl;
+        return qMakePair(-1, path);
     }
     std::string buffer(BUFFER_SIZE, '0');
     size_t templ_len = 0;
     int ind_find = 0;
-    while (!file_tgm.first->atEnd()) {
-        size_t count_read = static_cast<size_t>(file_tgm.first->read(&buffer[templ_len], BUFFER_SIZE - templ_len));
+    while (!file.atEnd()) {
+        qint64 count_read = (file.read(&buffer[templ_len], static_cast<qint64>(BUFFER_SIZE - templ_len)));
+        if(count_read == -1 ) {
+            cout << "Can't read file: " << path.toStdString() << endl;
+            file.close();
+            return qMakePair(-1, path);
+        }
         templ_len = templ.size();
-        buffer.resize(count_read);
+        buffer.resize(static_cast<size_t>(count_read));
         auto it = std::search(buffer.begin(), buffer.end(),
                       std::boyer_moore_horspool_searcher(
                           templ.begin(), templ.end()));
         if (it != buffer.end()) {
-            file_tgm.first->close();
-            return qMakePair(ind_find + it - buffer.begin(), file_tgm.first);
+            file.close();
+            return qMakePair(ind_find + it - buffer.begin(), path);
         }
         ind_find += count_read;
-        buffer.copy(&buffer[0], templ_len, count_read - templ_len);
+        buffer.copy(&buffer[0], templ_len, static_cast<size_t>(count_read) - templ_len);
     }
-    file_tgm.first->close();
-    return qMakePair(-1, file_tgm.first);
+    file.close();
+    return qMakePair(-1, path);
 }
 
-void scanner::find_in_small(QVector<QPair<int, QFile *>> &contains_templ, const std::string &templ) const
+void scanner::find_in_small(QVector<QPair<int, QString const >> &contains_templ, const std::string &templ) const
 {
-    for (auto i : small_files) {
-        std::string &text = i.second;
+
+    int step = std::max(1, small_files.size()/20);
+    int ind =0;
+    for (auto i = small_files.begin(); i != small_files.end(); ++i) {
+        if(++ind % step == 0) {
+            emit update_progress(ind/step);
+        }
+        std::string const& text = i.value();
         if (templ.size() < text.size()){
             auto it = std::search(text.begin(), text.end(),
                           std::boyer_moore_horspool_searcher(
                               templ.begin(), templ.end()));
             if (it != text.end()) {
-                contains_templ.push_back(qMakePair(it - text.begin(), i.first));
+                contains_templ.push_back(qMakePair(it - text.begin(), i.key()));
             }
         }
     }

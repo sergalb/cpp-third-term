@@ -28,26 +28,25 @@
      <number>0</number>
     </property>
     <item>
-     <widget class="QTreeWidget" name="treeWidget">
-      <property name="selectionBehavior">
-       <enum>QAbstractItemView::SelectRows</enum>
-      </property>
-      <column>
-       <property name="text">
-        <string> File name</string>
-       </property>
-      </column>
-      <column>
-       <property name="text">
-        <string>Path</string>
-       </property>
-      </column>
-      <column>
-       <property name="text">
-        <string>Size</string>
-       </property>
-      </column>
-     </widget>
+     <layout class="QVBoxLayout" name="verticalLayout_3">
+      <item>
+       <widget class="QLineEdit" name="lineEdit"/>
+      </item>
+      <item>
+       <widget class="QTreeWidget" name="treeWidget">
+        <column>
+         <property name="text">
+          <string>File name</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Index of occurence</string>
+         </property>
+        </column>
+       </widget>
+      </item>
+     </layout>
     </item>
    </layout>
   </widget>
@@ -70,41 +69,17 @@
    <attribute name="toolBarBreak">
     <bool>false</bool>
    </attribute>
-   <addaction name="actionFind_copy"/>
-   <addaction name="actionDelete"/>
-   <addaction name="actionStop"/>
+   <addaction name="actionIndexing"/>
   </widget>
-  <action name="actionFind_copy">
+  <action name="actionIndexing">
    <property name="text">
-    <string>&amp;Find copy</string>
+    <string>&amp;Index_directory</string>
    </property>
    <property name="toolTip">
     <string>Scan (Ctrl + Enter)</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+Enter</string>
-   </property>
-  </action>
-  <action name="actionDelete">
-   <property name="text">
-    <string>&amp;Delete</string>
-   </property>
-   <property name="toolTip">
-    <string>Delete (Del)</string>
-   </property>
-   <property name="shortcut">
-    <string>Del</string>
-   </property>
-  </action>
-  <action name="actionStop">
-   <property name="text">
-    <string>&amp;Stop</string>
-   </property>
-   <property name="toolTip">
-    <string>Stop (Esc)</string>
-   </property>
-   <property name="shortcut">
-    <string>Esc</string>
    </property>
   </action>
  </widget>

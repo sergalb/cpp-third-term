@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QTreeWidgetItem>
 #include "scanner.h"
+#include <QProgressDialog>
 namespace Ui {
 class MainWindow;
 }
@@ -23,16 +24,20 @@ public:
 
 private slots:
     void select_directory_and_scan();
-    void scanning_finished();
-    void stop();
-    void pull_in_ui(QVector<QPair<int, QFile*>> * contains_templ);
+    void indexing_finished();
+    void pull_in_ui(QVector<QPair<int, QString const>> * contains_templ);
+    void search_text();
+    void stop_index();
+    void stop_search();
 
 signals:
-    void stop_scan();
+    void new_text(std::string const text);
 
 private:
     std::unique_ptr<Ui::MainWindow> ui;
     std::unique_ptr<scanner> scan;
+    std::unique_ptr<QThread> scan_thread;
+    std::unique_ptr<QProgressDialog> progressDialog;
 private:
 };
 
