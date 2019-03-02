@@ -20,9 +20,19 @@ endif()
 
 
 add_executable(SubstringFinder main.cpp
-    mainwindow.h mainwindow.cpp scanner.cpp scanner.h utf8_validator.hpp trigram.hpp)
+    mainwindow.h mainwindow.cpp scanner.cpp scanner.h utf8_validator.hpp)
+
+add_executable(test test.cpp
+    scanner.cpp scanner.h utf8_validator.hpp)
+
+
+
 
 set_target_properties(SubstringFinder PROPERTIES    CXX_STANDARD 17)
+set_target_properties(test PROPERTIES    CXX_STANDARD 17)
 
 qt5_use_modules(SubstringFinder Concurrent)
 qt5_use_modules(SubstringFinder Widgets)
+
+qt5_use_modules(test Concurrent)
+qt5_use_modules(test Widgets)
