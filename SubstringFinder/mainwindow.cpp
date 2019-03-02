@@ -30,7 +30,10 @@ main_window::main_window(QWidget *parent) :
 
 void main_window::select_directory_and_scan()
 {
-    if (scan_thread.get()) scan_thread->quit();
+    if (scan_thread.get()) {
+        scan_thread->quit();
+        scan_thread->wait();
+    }
     disconnect(ui->lineEdit, &QLineEdit::editingFinished, this, &main_window::search_text);
     ui->lineEdit->setVisible(false);
     QString dir = QFileDialog::getExistingDirectory(this, "Select Directory for find copy",
@@ -115,5 +118,6 @@ void main_window::stop_search()
 main_window::~main_window() {
     if (scan_thread.get()) {
         scan_thread->quit();
+        scan_thread->wait();
     }
 }
